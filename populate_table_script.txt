@@ -1,0 +1,15 @@
+insert 1,  ssuvorov,      suvorov@mail.com
+insert 2,  mfadeev,       fadeev@mail.com
+insert 3,  klokutani,     lokutani@mail.com
+insert 4,  trebiart,      rebiart@mail.com
+insert 5,  rwienserrduff, wienserrduff@mail.com
+insert 6,  pprotobuff,    protobuff@mail.com
+insert 7,  rengrav,       engrav@mail.com
+insert 8,  arevver,       revver@mail.com
+insert 9,  tpotter,       potter@mail.com
+insert 10, gsmith,        smith@mail.com
+insert 11, slavender,     lavender@mail.com
+insert 12, fporter,       porter@mail.com
+insert 13, gkovashion,    kovashion@mail.com
+select
+.exit
