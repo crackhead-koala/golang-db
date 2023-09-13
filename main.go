@@ -66,8 +66,8 @@ func (table *Table) insertRow(row Row) {
 	table.rows = append(table.rows, row)
 }
 
-func (table *Table) selectAllRows() ([]Row, bool) {
-	return table.rows, true
+func (table *Table) selectAllRows() []Row {
+	return table.rows
 }
 
 // StatementType enum
@@ -138,17 +138,59 @@ func (statement *Statement) executeInsert(table *Table) {
 	table.insertRow(statement.rowToInsert)
 }
 
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+func countDigits[T Integer](n T) int {
+	digits := 0
+	for n != 0 {
+		n /= 10
+		digits++
+	}
+	return digits
+}
+
 func (statement *Statement) executeSelectAll(table *Table) {
 	if table.rows == nil {
 		fmt.Println("Empty table")
 	} else {
-		fmt.Println("| id\t| username\t| email")
-		fmt.Println("+---\t+---------\t+------")
-		rows, _ := table.selectAllRows()
+		rows := table.selectAllRows()
+		maxIdlen, maxUsernameLen, maxEmailLen := 2, 8, 5
 		for _, row := range rows {
-			fmt.Printf("| %d\t| %s\t| %s\n", row.id, row.username, row.email)
+			if idLen := countDigits(row.id); idLen > maxIdlen {
+				maxIdlen = idLen
+			}
+			if usernameLen := len(row.username); usernameLen > maxUsernameLen {
+				maxUsernameLen = usernameLen
+			}
+			if emailLen := len(row.email); emailLen > maxEmailLen {
+				maxEmailLen = emailLen
+			}
 		}
-		fmt.Println("+---\t+---------\t+------")
+
+		fmt.Printf(
+			"┌%s %s ┬ %s %s┬ %s %s┐\n",
+			strings.Repeat("─", maxIdlen-2), "id",
+			"username", strings.Repeat("─", maxUsernameLen-8),
+			"email", strings.Repeat("─", maxEmailLen-5),
+		)
+
+		for _, row := range rows {
+			fmt.Printf(
+				"│ %*d │ %-*s │ %-*s │\n",
+				maxIdlen, row.id,
+				maxUsernameLen, row.username,
+				maxEmailLen, row.email,
+			)
+		}
+
+		fmt.Printf(
+			"└─%s─┴─%s─┴─%s─┘\n",
+			strings.Repeat("─", maxIdlen),
+			strings.Repeat("─", maxUsernameLen),
+			strings.Repeat("─", maxEmailLen),
+		)
 	}
 }
 
