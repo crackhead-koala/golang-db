@@ -17,24 +17,49 @@ type Row struct {
 	email    string
 }
 
-func NewRow() Row {
-	var row Row
-	row.id = 0
-	row.username = ""
-	row.email = ""
-	return row
-}
-
-func (row *Row) isEmpty() bool {
-	return row.id == 0 && row.username == "" && row.email == ""
-}
-
 // PrepareResult enum
-func doMetaCommand(command string) error {
-	switch command {
+func parseCommand(command string) (string, []string) {
+	command = strings.TrimSpace(command)
+
+	var parsedCommand, parsedArgs string
+	for idx, char := range command {
+		if char == 32 { // [space] rune
+			parsedCommand, parsedArgs = command[:idx], command[(idx+1):]
+			break
+		}
+	}
+
+	if parsedCommand == "" {
+		parsedCommand = command
+	}
+
+	var args []string
+	if parsedArgs != "" {
+		args = strings.Split(parsedArgs, ",")
+		for idx, arg := range args {
+			args[idx] = strings.TrimSpace(arg)
+		}
+	}
+
+	return parsedCommand, args
+}
+
+func doMetaCommand(command string, table *Table) error {
+	parsedCommand, args := parseCommand(command)
+
+	switch parsedCommand {
 	case ".exit":
 		fmt.Println("bye.")
 		os.Exit(0)
+		return nil
+	case ".script":
+		if len(args) != 1 {
+			return errors.New("META_COMMAND_ARGUMENTS_PARSE_ERROR")
+		}
+		err := executeScript(args[0], table)
+		if err != nil {
+			return err
+		}
 		return nil
 	default:
 		return errors.New("UNRECOGNIZED_META_COMMAND")
@@ -57,11 +82,6 @@ type Table struct {
 	// maxFieldLen int
 }
 
-// func NewTable() Table {
-// 	var table Table
-// 	return table
-// }
-
 func (table *Table) insertRow(row Row) {
 	table.rows = append(table.rows, row)
 }
@@ -83,59 +103,39 @@ type Statement struct {
 	rowToInsert   Row
 }
 
-func parseCommand(command string) (string, uint32, string, string, error) {
-	var parsedCommand, parsedArgs string
-	for idx, char := range command {
-		if char == 32 { // [space] rune
-			parsedCommand, parsedArgs = command[:idx], command[(idx+1):]
-			break
-		}
-	}
-
-	if parsedArgs == "" {
-		return command, 0, "", "", nil
-	}
-
-	args := strings.Split(parsedArgs, ",")
-	if len(args) != 3 {
-		return "", 0, "", "", errors.New("COMMAND_ARGUMENTS_PARSE_ERROR")
-	}
-
-	id, err := strconv.ParseUint(args[0], 10, 32)
-	if err != nil {
-		return "", 0, "", "", errors.New("COMMAND_ARGUMENTS_PARSE_ERROR")
-	}
-
-	username := strings.TrimSpace(args[1])
-	email := strings.TrimSpace(args[2])
-
-	return parsedCommand, uint32(id), username, email, nil
-}
-
-func (statement *Statement) prepare(command string) error {
-	parsedCommand, id, username, email, err := parseCommand(command)
-	if err != nil {
-		return err
-	}
+func (s *Statement) prepare(command string) error {
+	parsedCommand, args := parseCommand(command)
 
 	switch parsedCommand {
 	case "insert":
-		if id == 0 && username == "" && email == "" {
+		if len(args) != 3 {
 			return errors.New("COMMAND_ARGUMENTS_PARSE_ERROR")
 		}
-		statement.statenemtType = STATEMENT_INSERT
-		statement.rowToInsert = Row{id: id, username: username, email: email}
+
+		id, err := strconv.ParseUint(strings.TrimSpace(args[0]), 10, 32)
+		if err != nil {
+			return errors.New("COMMAND_ARGUMENTS_PARSE_ERROR")
+		}
+
+		// Error if the whole row is empty
+		if id == 0 && args[1] == "" && args[1] == "" {
+			return errors.New("COMMAND_ARGUMENTS_PARSE_ERROR")
+		}
+
+		s.statenemtType = STATEMENT_INSERT
+		s.rowToInsert = Row{id: uint32(id), username: args[1], email: args[2]}
 		return nil
+
 	case "select":
-		statement.statenemtType = STATEMENT_SELECT
+		s.statenemtType = STATEMENT_SELECT
 		return nil
 	}
 
 	return errors.New("UNRECOGNIZED_STATEMENT")
 }
 
-func (statement *Statement) executeInsert(table *Table) {
-	table.insertRow(statement.rowToInsert)
+func (s *Statement) executeInsert(table *Table) {
+	table.insertRow(s.rowToInsert)
 }
 
 type Integer interface {
@@ -151,7 +151,7 @@ func countDigits[T Integer](n T) int {
 	return digits
 }
 
-func (statement *Statement) executeSelectAll(table *Table) {
+func (s *Statement) executeSelectAll(table *Table) {
 	if table.rows == nil {
 		fmt.Println("Empty table")
 	} else {
@@ -209,6 +209,42 @@ func print_prompt() {
 	fmt.Print("db> ")
 }
 
+// Script file input
+func executeScript(path string, table *Table) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// optionally, resize scanner's capacity for lines over 64K, see next example
+	for scanner.Scan() {
+		command := scanner.Text()
+		if command[0] == '.' {
+			err := doMetaCommand(command, table)
+			if err != nil {
+				return errors.New(fmt.Sprintf("Error parsing command `%s`", command))
+			}
+			continue
+		}
+
+		var statement Statement
+		err = statement.prepare(command)
+		if err != nil {
+			fmt.Println("Error:", err)
+			continue
+		}
+		statement.execute(table)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	var table Table
 	for {
@@ -227,7 +263,7 @@ func main() {
 
 		// if starts with a dot, then it's a meta-command
 		if command[0] == '.' {
-			err := doMetaCommand(command)
+			err := doMetaCommand(command, &table)
 			if err != nil {
 				fmt.Println("Error:", err)
 				continue
